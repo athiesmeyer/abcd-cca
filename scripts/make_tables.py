@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 import warnings
@@ -21,7 +20,7 @@ NETWORKS = OrderedDict([("ad","auditory"),
             ("dt","default"),
             ("dla","dorsal att."),
             ("fo","fronto parietal"),
-            ("n","none"),
+            # ("n","none"),
             ("rspltp","retrospl. temp."),
             ("sa","salience"),
             ("smh","sensorimr. hand"),
@@ -32,9 +31,49 @@ NETWORKS = OrderedDict([("ad","auditory"),
 CONNECTIONS = ["rsfmri_c_ngd_{}_ngd_{}".format(n1, n2) for (n1, n2) in 
                product(NETWORKS.keys(), NETWORKS.keys())]
 
+NETWORK_NAMES_ASAG = OrderedDict([("au","auditory"),
+            ("cerc","cingulo-opercular"),
+            ("copa","cingulo-parietal"),
+            ("df","default"),
+            ("dsa","dorsal attention"),
+            ("fopa","fronto parietal"),
+            # ("none","none"),
+            ("rst","retrosplenial temporal"),
+            ("sa","salience"),
+            ("smh","sensorimotor hand"),
+            ("smm","sensorimotor mouth"),
+            ("vta","ventral attention"),
+            ("vs","visual")])
+
+SUBCORTICAL = OrderedDict([("aalh","left accumbens area"),
+            ("aarh","right accumbens area"),
+            ("aglh"," left amygdala"),
+            ("agrh","right amygdala"),
+            ("bs","brain stem"),
+            ("cdelh","left caudate"),
+            ("cderh","right caudate"),
+            ("crcxlh"," left cerebellum cortex"),
+            ("crcxrh"," right cerebellum cortex"),
+            ("hplh","left hippocampus"),
+            ("hprh","right hippocampus"),
+            ("pllh","left pallidum"),
+            ("plrh","right pallidum"),
+            ("ptlh","left putamen"),
+            ("ptrh","right putamen"),
+            ("thplh","left thalamus proper"),
+            ("thprh","right thalamus proper"),
+            ("vtdclh","left ventraldc"),
+            ("vtdcrh","right ventraldc")])
+
+CONNECTIONS_C_SC = ["rsfmri_cor_ngd_{}_scs_{}".format(n1, n2) for (n1, n2) in 
+                    product(NETWORK_NAMES_ASAG.keys(), SUBCORTICAL.keys())]
+
 TIMEPOINTS = ["baseline_year_1_arm_1", "2_year_follow_up_y_arm_1", "4_year_follow_up_y_arm_1"]
 
 class TableMaker():
+    '''This class builds/saves/loads qms, rsfc, and confounds dataframes
+    at each timepoint.
+    '''
     def __init__(self,
                  core_filepath = CORE_FILEPATH,
                  qms_filepath = QMS_FILEPATH,
@@ -51,7 +90,7 @@ class TableMaker():
         self.saved_qms_dfs_filepath = saved_qms_dfs_filepath
         self.saved_rsfc_dfs_filepath = saved_rsfc_dfs_filepath
         self.saved_confounds_dfs_filepath = saved_confounds_dfs_filepath
-        self.timepoints = TIMEPOINTS
+        self.timepoints = timepoints
 
         self.subject_ids = self.load_subject_ids(self.subject_ids_filepath)
         self.static_measures = np.array([])
@@ -61,11 +100,13 @@ class TableMaker():
         subject_ids = pd.DataFrame({"src_subject_id": subject_ids})
         subject_ids = subject_ids.set_index("src_subject_id")
 
-        self.subject_ids = subject_ids
-
         return subject_ids
     
     def _fix_col(self, col):
+        '''If a comma is mistakenly located where a decimal
+        should be in a float, pandas cannot interpret the value
+        as a float. Fix these errors.
+        '''
         try:
             col.astype(np.float64)
         except Exception:
@@ -81,6 +122,7 @@ class TableMaker():
         return col    
 
     def _validate_data(self, df):
+        '''Forces df to contain just src_subject_id plus numeric columns'''
         if "eventname" in df.columns:
             df = df.drop("eventname", axis=1)
 
@@ -107,6 +149,8 @@ class TableMaker():
         return ohe_df
 
     def _join(self, df, dir, cols):
+        '''Reads through all csvs in dir and joins variables in 
+        cols to df'''
         for path in os.listdir(dir):
             path = os.path.join(dir, path)
             if os.path.isdir(path):
@@ -158,7 +202,7 @@ class TableMaker():
 
         return dfs
 
-    def _add_static_measures(baseline_qms, qms_dfs):
+    def _add_static_measures(self, baseline_qms, qms_dfs):
         '''For every column in the baseline dataframe, if it
         is not present in the other dataframes, add it.
         '''
@@ -166,6 +210,7 @@ class TableMaker():
         union = set([])
         intersect = set(baseline_qms.columns).copy()
         for qms_df in qms_dfs:
+            qms_df = qms_df.loc[:, qms_df.apply(lambda x: ~x.isna().all())]
             union = union.union(set(qms_df.columns))
             intersect = intersect.intersection(set(qms_df.columns))
 
@@ -176,9 +221,11 @@ class TableMaker():
 
         new_dfs = []
         for qms_df in qms_dfs:
+            qms_df = qms_df.loc[:, qms_df.apply(lambda x: ~x.isna().all())]
             qms_df = qms_df.loc[:, ~qms_df.columns.isin(not_static_not_full_measures)]
             new_df = pd.concat([qms_df, baseline_qms.loc[:, list(static_measures)]],
                                 axis=1)
+            new_df = new_df.loc[:, baseline_qms.columns]
             new_dfs.append(new_df)
 
         return [baseline_qms] + new_dfs, list(static_measures)
@@ -207,7 +254,7 @@ class TableMaker():
         edge_names = self._halve_mat(np.array(df.columns.tolist())[1:])
         concise_df = pd.DataFrame(concise_df, columns=edge_names)
         concise_df.insert(loc=0, column="src_subject_id",
-                            value = df["src_subject_id"].to_numpy())
+                            value=df["src_subject_id"].to_numpy())
 
         return concise_df
     
@@ -219,12 +266,27 @@ class TableMaker():
         
         return rsfc_df
 
-    def rsfc_at_timepoints(self, rsfc_df):
+    def rsfc_sub(self):
+        '''Obtain subcortical connection information'''
+        path = os.path.join(self.core_filepath, "imaging/mri_y_rsfmr_cor_gp_aseg.csv")
+        rsfc_df = pd.read_csv(path, usecols=["src_subject_id", "eventname"] + CONNECTIONS_C_SC)
+        rsfc_df = rsfc_df.loc[rsfc_df["src_subject_id"].isin(self.subject_ids.index.tolist()), :]\
+                    .reset_index(drop=True)
+        
+        return rsfc_df
+
+    def rsfc_at_timepoints(self, rsfc_full, rsfc_sub=None):
         dfs = []
         for timepoint in self.timepoints:
-            df = rsfc_df[rsfc_df["eventname"] == timepoint]
+            df = rsfc_full[rsfc_full["eventname"] == timepoint]
             df = df.drop("eventname", axis=1)
             df = self._halve_graph(df)
+
+            if not rsfc_sub is None:
+                df_sub = rsfc_sub[rsfc_sub["eventname"] == timepoint]
+                df_sub = df_sub.drop("eventname", axis=1)
+                df = df.merge(df_sub, on="src_subject_id")
+
             dfs.append(df)
 
         return dfs
@@ -268,7 +330,7 @@ class TableMaker():
 
         return dfs
     
-    def load_all_dfs(self, confounds = False):
+    def load_all_dfs(self, confounds=True):
         types = ["qms", "rsfc"]
         if confounds:
             types.append("confounds")
@@ -283,6 +345,7 @@ class TableMaker():
     def create_qms_dfs(self):
         qms_df = self.qms_full(self.qms_filepath)
         dfs = self.qms_at_timepoints(qms_df)
+
         dfs, static_measures = self._add_static_measures(dfs[0], dfs[1:])
         self.static_measures = static_measures
 
@@ -291,9 +354,13 @@ class TableMaker():
 
         return dfs
 
-    def create_rsfc_dfs(self):
-        rsfc_df = self.rsfc_full()
-        dfs = self.rsfc_at_timepoints(rsfc_df)
+    def create_rsfc_dfs(self, sub=False):
+        rsfc_full = self.rsfc_full()
+        if sub:
+            rsfc_sub = self.rsfc_sub()
+            dfs = self.rsfc_at_timepoints(rsfc_full, rsfc_sub)
+        else:
+            dfs = self.rsfc_at_timepoints(rsfc_full)
         dfs = [self._validate_data(df) for df in dfs]
         self.save_dfs(dfs, type="rsfc")
 
@@ -309,9 +376,8 @@ class TableMaker():
 
 if __name__ == "__main__":
     table_maker = TableMaker()
-    dfs = table_maker.create_confounds_dfs()
+    table_maker.create_qms_dfs()
+    # table_maker.create_rsfc_dfs()
+    # table_maker.create_confounds_dfs()
 
-    for df in dfs:
-        print(df.shape)
-
-    print(dfs[0].head())
+    dfs = table_maker.load_all_dfs()
