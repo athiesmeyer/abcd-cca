@@ -1,1 +1,0 @@
-mri_info_manufacturer, iqc_rsfmri_all_mean_motion, anthroweightcalc, anthroheightcalc, smri_vol_cdk_total, smri_vol_scs_intracranialv
