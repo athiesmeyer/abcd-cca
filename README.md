@@ -12,4 +12,4 @@ In addition to the usual suite of scientific Python packages, this repo requires
 **main.py**: Run supported CCA algorithms.
 
 ## Use
-When using this repo for the first time, I recommend running splitting.py, make_tables.py, processing.py in order. This will save the processed data required for CCA algorithms. All algorithms can then be run in main.py. Savepaths might need to be adjusted for your file system. 
+When using this repo for the first time, I recommend running splitting.py, make_tables.py, processing.py in order. This will save the processed data required for CCA algorithms. All algorithms can then be run in main.py. Examples of the use of these algorithms is shown. Savepaths might need to be adjusted for your file system. 
