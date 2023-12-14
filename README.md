@@ -9,7 +9,7 @@ In addition to the usual suite of scientific Python packages, this repo requires
 
 **processing.py**: Split all dataframes into folds according to pre-determined splits, impute missing data, and optionally regress out confounds
 
-**main.py**: Run supported CCA algorithms. Plotting will require tailored filepath setup
+**main.py**: Run supported CCA algorithms.
 
 ## Use
 When using this repo for the first time, I recommend running splitting.py, make_tables.py, processing.py in order. This will save the processed data required for CCA algorithms. All algorithms can then be run in main.py. Savepaths might need to be adjusted for your file system. 
